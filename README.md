@@ -1,4 +1,4 @@
-# updproxy
+# tcpproxy
 _a simple, cross-platform, multi-client TCP proxy_
 
 `tcpproxy` is a cross-platform, multi-client TCP proxy written in rust, that is designed for those "one-time" tasks where you usually end up spending more time installing a proxy server and setting up the myriad configuration files and options than you do actually using it.
