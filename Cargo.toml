@@ -1,0 +1,6 @@
+[package]
+name = "tcpproxy"
+version = "0.1.0"
+authors = ["Mahmoud Al-Qudsi <mqudsi@neosmart.net>"]
+
+[dependencies]
