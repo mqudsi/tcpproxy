@@ -2,5 +2,14 @@
 name = "tcpproxy"
 version = "0.1.0"
 authors = ["Mahmoud Al-Qudsi <mqudsi@neosmart.net>"]
+description = "Cross-platform multi-client TCP proxy"
+homepage = "https://github.com/neosmart/tcpproxy"
+repository = "https://github.com/neosmart/tcpproxy"
+readme = "README.md"
+keywords = ["proxy", "tcp", "networking"]
+categories = ["command-line-utilities", "network-programming"]
+license = "MIT"
 
 [dependencies]
+getopts = "0.2"
+rand = "0.3"
