@@ -11,5 +11,10 @@ categories = ["command-line-utilities", "network-programming"]
 license = "MIT"
 
 [dependencies]
+futures = "0.1"
 getopts = "0.2"
 rand = "0.3"
+tokio-core = "0.1"
+tokio-io = "0.1"
+ns-dns-tokio = "0.3"
+abstract-ns = "0.3"

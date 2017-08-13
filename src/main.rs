@@ -1,16 +1,20 @@
+extern crate abstract_ns;
+extern crate futures;
 extern crate getopts;
+extern crate ns_dns_tokio;
 extern crate rand;
+extern crate tokio_core;
+extern crate tokio_io;
 
+use abstract_ns::Resolver;
+use futures::{Future, Stream};
 use getopts::Options;
+use ns_dns_tokio::DnsResolver;
 use std::env;
-use std::io::prelude::*;
-use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use std::time::Duration;
+use tokio_core::net::{TcpStream, TcpListener};
+use tokio_core::reactor::Core;
+use tokio_io::{AsyncRead, io};
 
-const TIMEOUT: u64 = 3 * 60 * 100; //3 minutes
 static mut DEBUG: bool = false;
 
 fn print_usage(program: &str, opts: Options) {
@@ -46,9 +50,9 @@ fn main() {
 
     let matches = opts.parse(&args[1..])
         .unwrap_or_else(|_| {
-                            print_usage(&program, opts);
-                            std::process::exit(-1);
-                        });
+            print_usage(&program, opts);
+            std::process::exit(-1);
+        });
 
     unsafe {
         DEBUG = matches.opt_present("d");
@@ -75,109 +79,83 @@ fn debug(msg: String) {
     }
 }
 
-fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32) {
-    let local_addr = format!("{}:{}", bind_addr, local_port);
-    let local = TcpListener::bind(&local_addr).expect(&format!("Unable to bind to {}", &local_addr));
-    println!("Listening on {}", local.local_addr().unwrap());
+fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) {
+    //this is the main event loop, powered by tokio core
+    let mut core = Core::new().unwrap();
+    let handle = core.handle();
 
-    let remote_addr = format!("{}:{}", remote_host, remote_port);
+    //listen on the specified IP and port
+    let bind_addr = format!("{}:{}", bind_ip, local_port);
+    let bind_sock = bind_addr.parse().unwrap();
+    let listener = TcpListener::bind(&bind_sock, &handle)
+        .expect(&format!("Unable to bind to {}", &bind_addr));
+    println!("Listening on {}", listener.local_addr().unwrap());
 
-    loop {
-        let client_id;
-        let client = match local.accept() {
-            Ok((x, y)) => {
-                client_id = format!("{:?}", y);
-                println!("New connection from client {:?}", client_id);
-                x
-            },
-            Err(e) => {
-                println!("Error establishing connection to client: {:?}", e);
-                continue;
-            }
-        };
+    //create an async dns resolver
+    let resolver = DnsResolver::system_config(&handle).unwrap();
 
-        let remote_addr_copy = remote_addr.clone();
-        thread::spawn(move|| {
-            let mut timeouts : u64 = 0;
-            let timed_out = Arc::new(AtomicBool::new(false));
+    let server = resolver.resolve(&format!("{}:{}", remote_host, remote_port))
+        .map_err(|err| {
+            println!("{:?}", err);
+            ()
+        })
+        .and_then(move |resolved| {
+            let remote_addr = resolved.pick_one()
+                .expect(&format!("No valid IP addresses for host {}!", remote_host));
 
-            let local_timed_out = timed_out.clone();
-            //while with UDP we had one thread to read and write from a single (upstream|client)
-            //connection, with TCP a thread will read from one and write to the other.
+            println!("Resolved {}:{} to {}",
+                     remote_host,
+                     remote_port,
+                     remote_addr);
 
-            //this thread reads from upstream and writes to client
-            let mut client_send = client.try_clone().expect("Could not clone client connection!");
-            let mut upstream_recv = TcpStream::connect(&remote_addr_copy)
-                .expect("Failed to open connection to remote address!");
-            let mut client_recv = client;
-            let mut upstream_send = upstream_recv.try_clone()
-                .expect("Failed to clone client-specific connection to upstream!");
-            let client_id_copy = client_id.clone();
+            let remote_addr = remote_addr.clone();
+            listener.incoming()
+                .for_each(move |(client, client_addr)| {
+                    println!("New connection from {}", client_addr);
 
-            thread::spawn(move|| {
-                let mut from_upstream = [0; 8 * 1024];
-                upstream_recv.set_read_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
-                client_send.set_write_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
+                    //establish connection to upstream for each incoming client connection
+                    let handle = handle.clone();
+                    TcpStream::connect(&remote_addr, &handle).and_then(move |remote| {
+                        let (client_recv, client_send) = client.split();
+                        let (remote_recv, remote_send) = remote.split();
 
-                loop {
-                    // debug("Waiting for data from upstream server".to_owned());
-                    match upstream_recv.read(&mut from_upstream) {
-                        Ok(0) => {
-                            // continue;
-                            break;
-                        },
-                        Ok(bytes_rcvd) => {
-                            debug(format!("Received {} bytes from upstream server", bytes_rcvd));
-                            let mut total_bytes_written = 0;
-                            while total_bytes_written != bytes_rcvd {
-                                let bytes_written = client_send.write(&from_upstream[total_bytes_written..bytes_rcvd - total_bytes_written])
-                                    .expect("Failed to queue response from upstream server for forwarding!");
-                                debug(format!("Wrote {} bytes to client", bytes_written));
-                                total_bytes_written += bytes_written;
-                            }
-                            timeouts = 0; //reset timeout count
-                        },
-                        Err(_) => {
-                            if local_timed_out.load(Ordering::Relaxed) {
-                                debug(format!("Terminating forwarder thread for client {} due to timeout", client_id));
-                                break;
-                            }
-                        }
-                    };
-                }
-            });
+                        let remote_bytes_copied = io::copy(remote_recv, client_send);
+                        let client_bytes_copied = io::copy(client_recv, remote_send);
 
-            let mut from_client = [0; 8 * 1024];
-            client_recv.set_read_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
-            upstream_send.set_write_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
-            loop {
-                // debug("Waiting for data from client".to_owned());
-                match client_recv.read(&mut from_client) {
-                    Ok(0) => {
-                        // continue;
-                        break;
-                    },
-                    Ok(bytes_rcvd) => {
-                        debug(format!("Received {} bytes from client", bytes_rcvd));
-                        let mut total_bytes_written = 0;
-                        while total_bytes_written != bytes_rcvd {
-                            let bytes_written = upstream_send.write(&from_client[total_bytes_written..bytes_rcvd - total_bytes_written])
-                                .expect("Failed to queue response from upstream server for forwarding!");
-                            debug(format!("Wrote {} bytes to upstream", bytes_written));
-                            total_bytes_written += bytes_written;
-                        }
-                        timeouts = 0; //reset timeout count
-                    },
-                    Err(_) => {
-                        timeouts += 1;
-                        if timeouts >= 10 {
-                            debug(format!("Disconnecting forwarder for client {} due to timeout", client_id_copy));
-                            timed_out.store(true, Ordering::Relaxed);
-                            break;
-                        }
-                    }
-                };
-            }
+                        fn error_handler<T, V>(err: T, client_addr: V)
+                            where T: std::fmt::Debug,
+                                  V: std::fmt::Display
+                        {
+                            println!("Error writing from upstream server to remote client {}!",
+                                     client_addr);
+                            println!("{:?}", err);
+                            ()
+                        };
+
+                        let client_addr_clone = client_addr.clone();
+                        let async1 = remote_bytes_copied.map(move |(count, _, _)| {
+                                debug(format!("Transferred {} bytes from upstream server to remote \
+                                               client {}",
+                                              count, client_addr_clone))
+                            })
+                            .map_err(move |err| error_handler(err, client_addr_clone));
+
+                        let client_addr_clone = client_addr;
+                        let async2 = client_bytes_copied.map(move |(count, _, _)| {
+                                debug(format!("Transferred {} bytes from remote client {} to upstream \
+                                               server",
+                                              count, client_addr_clone))
+                            })
+                            .map_err(move |err| error_handler(err, client_addr_clone));
+
+                        handle.spawn(async1);
+                        handle.spawn(async2);
+
+                        Ok(())
+                    })
+                })
+                .map_err(|err| println!("{:?}", err))
         });
-    }
+
+    core.run(server).unwrap();
 }
