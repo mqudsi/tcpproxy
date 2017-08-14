@@ -92,7 +92,6 @@ fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) 
         .expect(&format!("Unable to bind to {}", &bind_addr));
     println!("Listening on {}", listener.local_addr().unwrap());
 
-    let handle2 = handle.clone();
     //we have either been provided an IP address or a host name
     //instead of trying to check its format, just trying creating a SocketAddr from it
     let parse_result = format!("{}:{}", remote_host, remote_port).parse::<std::net::SocketAddr>();
@@ -100,7 +99,7 @@ fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) 
         .or_else(|_| {
             //it's a hostname; we're going to need to resolve it
             //create an async dns resolver
-            let resolver = DnsResolver::system_config(&handle2).unwrap();
+            let resolver = DnsResolver::system_config(&handle).unwrap();
 
             resolver.resolve(&format!("{}:{}", remote_host, remote_port))
                 .map(move |resolved| {
@@ -109,13 +108,14 @@ fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) 
                 })
                 .map_err(|err| println!("{:?}", err))
         })
-        .and_then(move |remote_addr| {
+        .and_then(|remote_addr| {
             println!("Resolved {}:{} to {}",
                      remote_host,
                      remote_port,
                      remote_addr);
 
             let remote_addr = remote_addr.clone();
+            let handle = handle.clone();
             listener.incoming()
                 .for_each(move |(client, client_addr)| {
                     println!("New connection from {}", client_addr);
