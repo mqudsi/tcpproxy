@@ -1,22 +1,13 @@
-extern crate abstract_ns;
+#[macro_use]
 extern crate futures;
-extern crate getopts;
-extern crate ns_dns_tokio;
-extern crate rand;
-extern crate tokio_core;
-extern crate tokio_io;
 
-use abstract_ns::Resolver;
-use futures::{Future, Stream};
-use futures::future;
 use getopts::Options;
-use ns_dns_tokio::DnsResolver;
 use std::env;
-use tokio_core::net::{TcpStream, TcpListener};
-use tokio_core::reactor::Core;
-use tokio_io::{AsyncRead, io};
+use tokio::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-static mut DEBUG: bool = false;
+type Error = Box<dyn std::error::Error + Sync + Send + 'static>;
+static DEBUG: AtomicBool = AtomicBool::new(false);
 
 fn print_usage(program: &str, opts: Options) {
     let program_path = std::path::PathBuf::from(program);
@@ -26,7 +17,8 @@ fn print_usage(program: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
 
@@ -49,122 +41,112 @@ fn main() {
                 "BIND_ADDR");
     opts.optflag("d", "debug", "Enable debug mode");
 
-    let matches = opts.parse(&args[1..])
-        .unwrap_or_else(|_| {
+    let matches = match opts.parse(&args[1..]) {
+        Ok(opts) => opts,
+        Err(_) => {
             print_usage(&program, opts);
             std::process::exit(-1);
-        });
+        }
+    };
 
-    unsafe {
-        DEBUG = matches.opt_present("d");
-    }
-    let local_port: i32 = matches.opt_str("l").unwrap().parse().unwrap();
-    let remote_port: i32 = matches.opt_str("r").unwrap().parse().unwrap();
+    DEBUG.store(matches.opt_present("d"), Ordering::Relaxed);
+    let local_port: i32 = matches.opt_str("l").unwrap().parse()?;
+    let remote_port: i32 = matches.opt_str("r").unwrap().parse()?;
     let remote_host = matches.opt_str("h").unwrap();
     let bind_addr = match matches.opt_str("b") {
         Some(addr) => addr,
         None => "127.0.0.1".to_owned(),
     };
 
-    forward(&bind_addr, local_port, &remote_host, remote_port);
+    forward(&bind_addr, local_port, &remote_host, remote_port).await
 }
 
-fn debug(msg: String) {
-    let debug: bool;
-    unsafe {
-        debug = DEBUG;
-    }
-
-    if debug {
-        println!("{}", msg);
-    }
-}
-
-fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) {
-    //this is the main event loop, powered by tokio core
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-
-    //listen on the specified IP and port
+async fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) -> Result<(), Error> {
+    // Listen on the specified IP and port
     let bind_addr = format!("{}:{}", bind_ip, local_port);
-    let bind_sock = bind_addr.parse().unwrap();
-    let listener = TcpListener::bind(&bind_sock, &handle)
-        .expect(&format!("Unable to bind to {}", &bind_addr));
+    let bind_sock = bind_addr.parse::<std::net::SocketAddr>()?;
+    let mut listener = TcpListener::bind(&bind_sock).await?;
     println!("Listening on {}", listener.local_addr().unwrap());
 
-    //we have either been provided an IP address or a host name
-    //instead of trying to check its format, just trying creating a SocketAddr from it
+    // We have either been provided an IP address or a host name.
+    // Instead of trying to check its format, just trying creating a SocketAddr from it.
     let parse_result = format!("{}:{}", remote_host, remote_port).parse::<std::net::SocketAddr>();
-    let server = future::result(parse_result)
-        .or_else(|_| {
-            //it's a hostname; we're going to need to resolve it
-            //create an async dns resolver
-            let resolver = DnsResolver::system_config(&handle).unwrap();
+    let remote_addr = match parse_result {
+        Ok(s) => s,
+        Err(_) => {
+            // It's a hostname; we're going to need to resolve it.
+            // Create an async dns resolver
 
-            resolver.resolve(&format!("{}:{}", remote_host, remote_port))
-                .map(move |resolved| {
-                    resolved.pick_one()
-                        .expect(&format!("No valid IP addresses for target {}", remote_host))
-                })
-                .map_err(|err| println!("{:?}", err))
-        })
-        .and_then(|remote_addr| {
-            println!("Resolved {}:{} to {}",
-                     remote_host,
-                     remote_port,
-                     remote_addr);
+            use trust_dns_resolver::AsyncResolver;
+            use trust_dns_resolver::config::*;
 
-            let remote_addr = remote_addr.clone();
-            let handle = handle.clone();
-            listener.incoming()
-                .for_each(move |(client, client_addr)| {
-                    println!("New connection from {}", client_addr);
+            let runtime = tokio::runtime::Runtime::new()?;
 
-                    //establish connection to upstream for each incoming client connection
-                    let handle = handle.clone();
-                    TcpStream::connect(&remote_addr, &handle).and_then(move |remote| {
-                        let (client_recv, client_send) = client.split();
-                        let (remote_recv, remote_send) = remote.split();
+            let resolver = match AsyncResolver::new(
+                ResolverConfig::default(),
+                ResolverOpts::default(),
+                runtime.handle().clone(),
+            ).await {
+                Ok(r) => r,
+                Err(e) => {
+                    panic!("Error creating DNS resolver: {:?}", e);
+                }
+            };
 
-                        let remote_bytes_copied = io::copy(remote_recv, client_send);
-                        let client_bytes_copied = io::copy(client_recv, remote_send);
+            let resolutions = resolver.lookup_ip(remote_host).await.expect("Failed to resolve server IP address!");
+            let remote_addr = resolutions.iter().nth(1).expect("Failed to resolve server IP address!");
+            println!("Resolved {} to {}", remote_host, remote_addr);
+            format!("{}:{}", remote_addr, remote_port).parse()?
+        },
+    };
 
-                        fn error_handler<T, V>(err: T, client_addr: V)
-                            where T: std::fmt::Debug,
-                                  V: std::fmt::Display
-                        {
-                            println!("Error writing from upstream server to remote client {}!",
-                                     client_addr);
-                            println!("{:?}", err);
-                            ()
-                        };
+    loop {
+        let (mut client, client_addr) = listener.accept().await?;
 
-                        let client_addr_clone = client_addr.clone();
-                        let async1 = remote_bytes_copied.map(move |(count, _, _)| {
-                                debug(format!("Transferred {} bytes from upstream server to \
-                                               remote client {}",
-                                              count,
-                                              client_addr_clone))
-                            })
-                            .map_err(move |err| error_handler(err, client_addr_clone));
+        tokio::spawn(async move {
+                println!("New connection from {}", client_addr);
 
-                        let client_addr_clone = client_addr;
-                        let async2 = client_bytes_copied.map(move |(count, _, _)| {
-                                debug(format!("Transferred {} bytes from remote client {} to \
-                                               upstream server",
-                                              count,
-                                              client_addr_clone))
-                            })
-                            .map_err(move |err| error_handler(err, client_addr_clone));
+                // Establish connection to upstream for each incoming client connection
+                let mut remote = TcpStream::connect(&remote_addr).await?;
+                let (mut client_recv, mut client_send) = client.split();
+                let (mut remote_recv, mut remote_send) = remote.split();
 
-                        handle.spawn(async1);
-                        handle.spawn(async2);
+                let (remote_bytes_copied, client_bytes_copied) = join!(
+                    tokio::io::copy(&mut remote_recv, &mut client_send),
+                    tokio::io::copy(&mut client_recv, &mut remote_send),
+                );
 
-                        Ok(())
-                    })
-                })
-                .map_err(|err| println!("{:?}", err))
+                match remote_bytes_copied {
+                    Ok(count) => {
+                        if DEBUG.load(Ordering::Relaxed) {
+                            eprintln!("Transferred {} bytes from remote client {} to upstream server",
+                                              count, client_addr);
+                        }
+
+                    }
+                    Err(err) => {
+                        eprintln!("Error writing from remote client {} to upstream server!",
+                                 client_addr);
+                        eprintln!("{:?}", err);
+                    }
+                };
+
+                match client_bytes_copied {
+                    Ok(count) => {
+                        if DEBUG.load(Ordering::Relaxed) {
+                            eprintln!("Transferred {} bytes from upstream server to remote client {}",
+                                count, client_addr);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Error writing bytes from upstream server to remote client {}",
+                            client_addr);
+                        eprintln!("{:?}", err);
+                    }
+                };
+
+                let r: Result<(), Error> = Ok(());
+                r
         });
-
-    core.run(server).unwrap();
+    }
 }
