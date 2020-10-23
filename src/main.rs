@@ -1,12 +1,10 @@
-#[macro_use]
-extern crate futures;
-
 use getopts::Options;
 use std::env;
-use tokio::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::join;
+use tokio::net::{TcpListener, TcpStream};
 
-type Error = Box<dyn std::error::Error + Sync + Send + 'static>;
+type BoxedError = Box<dyn std::error::Error + Sync + Send + 'static>;
 static DEBUG: AtomicBool = AtomicBool::new(false);
 
 fn print_usage(program: &str, opts: Options) {
@@ -18,7 +16,7 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<(), BoxedError> {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
 
@@ -61,11 +59,15 @@ async fn main() -> Result<(), Error> {
     forward(&bind_addr, local_port, &remote_host, remote_port).await
 }
 
-async fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) -> Result<(), Error> {
+async fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port: i32) -> Result<(), BoxedError> {
     // Listen on the specified IP and port
-    let bind_addr = format!("{}:{}", bind_ip, local_port);
-    let bind_sock = bind_addr.parse::<std::net::SocketAddr>()?;
-    let mut listener = TcpListener::bind(&bind_sock).await?;
+    let bind_addr = if bind_ip.contains(':') {
+        format!("[{}]:{}", bind_ip, local_port)
+    } else {
+        format!("{}:{}", bind_ip, local_port)
+    };
+    let bind_sock = bind_addr.parse::<std::net::SocketAddr>().expect("Failed to parse bind address");
+    let listener = TcpListener::bind(&bind_sock).await?;
     println!("Listening on {}", listener.local_addr().unwrap());
 
     // We have either been provided an IP address or a host name.
@@ -77,21 +79,13 @@ async fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port:
             // It's a hostname; we're going to need to resolve it.
             // Create an async dns resolver
 
-            use trust_dns_resolver::AsyncResolver;
+            use trust_dns_resolver::TokioAsyncResolver;
             use trust_dns_resolver::config::*;
 
-            let runtime = tokio::runtime::Runtime::new()?;
-
-            let resolver = match AsyncResolver::new(
+            let resolver = TokioAsyncResolver::tokio(
                 ResolverConfig::default(),
-                ResolverOpts::default(),
-                runtime.handle().clone(),
-            ).await {
-                Ok(r) => r,
-                Err(e) => {
-                    panic!("Error creating DNS resolver: {:?}", e);
-                }
-            };
+                ResolverOpts::default())
+            .await.expect("Failed to create DNS resolver");
 
             let resolutions = resolver.lookup_ip(remote_host).await.expect("Failed to resolve server IP address!");
             let remote_addr = resolutions.iter().nth(1).expect("Failed to resolve server IP address!");
@@ -145,7 +139,7 @@ async fn forward(bind_ip: &str, local_port: i32, remote_host: &str, remote_port:
                     }
                 };
 
-                let r: Result<(), Error> = Ok(());
+                let r: Result<(), BoxedError> = Ok(());
                 r
         });
     }
