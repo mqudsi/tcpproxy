@@ -23,11 +23,11 @@ async fn main() -> Result<(), BoxedError> {
     let mut opts = Options::new();
     opts.reqopt("l",
                 "local-port",
-                "The local port to which udpproxy should bind to",
+                "The local port to which tcpproxy should bind to",
                 "LOCAL_PORT");
     opts.reqopt("r",
                 "remote-port",
-                "The remote port to which UDP packets should be forwarded",
+                "The remote port to which TCP packets should be forwarded",
                 "REMOTE_PORT");
     opts.reqopt("h",
                 "host",
