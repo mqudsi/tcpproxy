@@ -8,6 +8,7 @@ use tokio::sync::broadcast;
 
 type BoxedError = Box<dyn std::error::Error + Sync + Send + 'static>;
 static DEBUG: AtomicBool = AtomicBool::new(false);
+const BUF_SIZE: usize = 1024;
 
 fn print_usage(program: &str, opts: Options) {
     let program_path = std::path::PathBuf::from(program);
@@ -98,7 +99,7 @@ async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(), Box
         W: tokio::io::AsyncWrite + Unpin,
     {
         let mut copied = 0;
-        let mut buf = [0u8; 1024];
+        let mut buf = [0u8; BUF_SIZE];
         loop {
             let bytes_read;
             tokio::select! {
