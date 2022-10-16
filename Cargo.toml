@@ -15,5 +15,5 @@ edition = "2018"
 futures = "0.3.21"
 getopts = "0.2.21"
 rand = "0.8.5"
-tokio = { version = "1.19.2", features = [ "io-util", "net", "rt-multi-thread", "parking_lot", "macros", "sync" ] }
+tokio = { version = "1.19.2", features = [ "io-util", "net", "rt-multi-thread", "macros", "sync" ] }
 # trust-dns-resolver = "0.19.5"
