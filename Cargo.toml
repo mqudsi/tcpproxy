@@ -14,5 +14,4 @@ edition = "2018"
 [dependencies]
 futures = "0.3.24"
 getopts = "0.2.21"
-rand = "0.8.5"
 tokio = { version = "1.21.2", features = [ "io-util", "net", "rt-multi-thread", "macros", "sync" ] }
