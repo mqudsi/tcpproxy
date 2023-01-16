@@ -1,7 +1,6 @@
 use std::{env, sync::atomic::Ordering};
-
 use getopts::Options;
-use tcpproxy::{forward, BoxedError, DEBUG};
+use tcpproxy::{BoxedError, DEBUG, forward};
 
 fn print_usage(program: &str, opts: Options) {
     let program_path = std::path::PathBuf::from(program);
@@ -28,7 +27,7 @@ async fn main() -> Result<(), BoxedError> {
     opts.optopt(
         "l",
         "local-port",
-        "The local port to which tcp-proxy should bind to, randomly chosen otherwise",
+        "The local port to which tcpproxy should bind to, randomly chosen otherwise",
         "LOCAL_PORT",
     );
     opts.optflag("d", "debug", "Enable debug mode");

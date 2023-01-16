@@ -1,13 +1,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-
 use futures::FutureExt;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-    sync::broadcast,
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 
 pub type BoxedError = Box<dyn std::error::Error + Sync + Send + 'static>;
+
 pub static DEBUG: AtomicBool = AtomicBool::new(false);
 const BUF_SIZE: usize = 1024;
 
@@ -33,9 +31,9 @@ pub async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(),
         write: &mut W,
         mut abort: broadcast::Receiver<()>,
     ) -> tokio::io::Result<usize>
-    where
-        R: tokio::io::AsyncRead + Unpin,
-        W: tokio::io::AsyncWrite + Unpin,
+        where
+            R: tokio::io::AsyncRead + Unpin,
+            W: tokio::io::AsyncWrite + Unpin,
     {
         let mut copied = 0;
         let mut buf = [0u8; BUF_SIZE];
