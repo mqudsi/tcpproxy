@@ -137,7 +137,13 @@ async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(), Box
             println!("New connection from {}", client_addr);
 
             // Establish connection to upstream for each incoming client connection
-            let mut remote = TcpStream::connect(remote.as_str()).await?;
+            let mut remote = match TcpStream::connect(remote.as_str()).await {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("Error establishing upstream connection: {e}");
+                    return;
+                }
+            };
             let (mut client_read, mut client_write) = client.split();
             let (mut remote_read, mut remote_write) = remote.split();
 
@@ -185,8 +191,7 @@ async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(), Box
                 }
             };
 
-            let r: Result<(), BoxedError> = Ok(());
-            r
+            ()
         });
     }
 }
