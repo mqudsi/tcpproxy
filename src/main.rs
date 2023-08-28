@@ -106,7 +106,12 @@ async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(), Box
                 biased;
 
                 result = read.read(&mut buf) => {
-                    bytes_read = result?;
+                    use std::io::ErrorKind::{ConnectionReset, ConnectionAborted};
+                    bytes_read = result.or_else(|e| match e.kind() {
+                        // Consider these to be part of the proxy life, not errors
+                        ConnectionReset | ConnectionAborted => Ok(0),
+                        _ => Err(e)
+                    })?;
                 },
                 _ = abort.recv() => {
                     break;
