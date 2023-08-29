@@ -49,7 +49,7 @@ async fn main() -> Result<(), BoxedError> {
         }
     };
     let remote = match matches.free.len() {
-        1 => matches.free[0].as_str(),
+        1 => matches.free[0].clone(),
         _ => {
             print_usage(&program, opts);
             std::process::exit(-1);
@@ -72,7 +72,7 @@ async fn main() -> Result<(), BoxedError> {
     forward(&bind_addr, local_port, remote).await
 }
 
-async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(), BoxedError> {
+async fn forward(bind_ip: &str, local_port: i32, remote: String) -> Result<(), BoxedError> {
     // Listen on the specified IP and port
     let bind_addr = if !bind_ip.starts_with('[') && bind_ip.contains(':') {
         // Correctly format for IPv6 usage
@@ -86,8 +86,13 @@ async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(), Box
     let listener = TcpListener::bind(&bind_sock).await?;
     println!("Listening on {}", listener.local_addr().unwrap());
 
-    // We have either been provided an IP address or a host name.
-    let remote = std::sync::Arc::new(remote.to_string());
+    // `remote` should be either the host name or ip address, with the port appended.
+    // It doesn't get tested/validated until we get our first connection, though!
+
+    // We leak `remote` instead of wrapping it in an Arc to share it with future tasks since
+    // `remote` is going to live for the lifetime of the server in all cases.
+    // (This reduces MESI/MOESI cache traffic between CPU cores.)
+    let remote: &str = Box::leak(remote.into_boxed_str());
 
     async fn copy_with_abort<R, W>(
         read: &mut R,
@@ -130,14 +135,13 @@ async fn forward(bind_ip: &str, local_port: i32, remote: &str) -> Result<(), Box
     }
 
     loop {
-        let remote = remote.clone();
         let (mut client, client_addr) = listener.accept().await?;
 
         tokio::spawn(async move {
             println!("New connection from {}", client_addr);
 
             // Establish connection to upstream for each incoming client connection
-            let mut remote = match TcpStream::connect(remote.as_str()).await {
+            let mut remote = match TcpStream::connect(remote).await {
                 Ok(result) => result,
                 Err(e) => {
                     eprintln!("Error establishing upstream connection: {e}");
