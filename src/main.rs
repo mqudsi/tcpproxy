@@ -170,14 +170,14 @@ async fn forward(bind_ip: &str, local_port: i32, remote: String) -> Result<(), B
                 Ok(count) => {
                     if DEBUG.load(Ordering::Relaxed) {
                         eprintln!(
-                            "Transferred {} bytes from remote client {} to upstream server",
+                            "Transferred {} bytes from proxy client {} to upstream server",
                             count, client_addr
                         );
                     }
                 }
                 Err(err) => {
                     eprintln!(
-                        "Error writing bytes from remote client {} to upstream server",
+                        "Error writing bytes from proxy client {} to upstream server",
                         client_addr
                     );
                     eprintln!("{}", err);
@@ -188,14 +188,14 @@ async fn forward(bind_ip: &str, local_port: i32, remote: String) -> Result<(), B
                 Ok(count) => {
                     if DEBUG.load(Ordering::Relaxed) {
                         eprintln!(
-                            "Transferred {} bytes from upstream server to remote client {}",
+                            "Transferred {} bytes from upstream server to proxy client {}",
                             count, client_addr
                         );
                     }
                 }
                 Err(err) => {
                     eprintln!(
-                        "Error writing from upstream server to remote client {}!",
+                        "Error writing from upstream server to proxy client {}!",
                         client_addr
                     );
                     eprintln!("{}", err);
