@@ -94,6 +94,11 @@ async fn forward(bind_ip: &str, local_port: i32, remote: String) -> Result<(), B
     // (This reduces MESI/MOESI cache traffic between CPU cores.)
     let remote: &str = Box::leak(remote.into_boxed_str());
 
+    // Two instances of this function are spawned for each half of the connection: client-to-server,
+    // server-to-client. We can't use tokio::io::copy() instead (no matter how convenient it might
+    // be) because it doesn't give us a way to correlate the lifetimes of the two tcp read/write
+    // loops: even after the client disconnects, tokio would keep the upstream connection to the
+    // server alive until the connection's max client idle timeout is reached.
     async fn copy_with_abort<R, W>(
         read: &mut R,
         write: &mut W,
@@ -127,6 +132,8 @@ async fn forward(bind_ip: &str, local_port: i32, remote: String) -> Result<(), B
                 break;
             }
 
+            // While we ignore some read errors above, any error writing data we've already read to
+            // the other side is always treated as exceptional.
             write.write_all(&buf[0..bytes_read]).await?;
             copied += bytes_read;
         }
