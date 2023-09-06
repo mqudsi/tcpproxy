@@ -26,7 +26,7 @@ Where possible, sane defaults for arguments are provided automatically.
 
 ## Installation
 
-`tcpproxy` is available via `crate`, the rust package manager. Installation is as follows:
+`tcpproxy` is available via `cargo`, the rust package manager. Installation is as follows:
 
     cargo install tcpproxy
 
