@@ -32,6 +32,14 @@ Where possible, sane defaults for arguments are provided automatically.
 
 Pre-complied binaries for select platforms may be available from the `tcpproxy` homepage at https://neosmart.net/tcpproxy/
 
-## License
+## Project Status
 
-`tcpproxy` is open source and licensed under the terms of the MIT public license.
+Depending on which language ecosystem you are coming from, this project may appear to be "unmaintained." Do not be fooled by a lack of updates for some length of time - this project is regularly updated **when needed** to fix bugs, improve code quality, use more modern rust coding patterns and conventions, and update dependencies. This project is *not*, however, updated for the sake of updating and is currently, in the humble opinion of its author, fairly feature-complete. The intention was always to provide a minimalistic (but still useful!) tcp proxy that can be quickly fired-up from the command line and put to good use. It is not intended to become comprehensive of any and all peripheral features and attempts to bundle "everything and the kitchen sink" will be respectfully but firmly declined.
+
+## Contributing
+
+Pull requests are welcome, but for any major undertakings, please do open an issue first to make sure we're all on the same page!
+
+## License and Authorship
+
+`tcpproxy` is developed and maintained by Mahmoud Al-Qudsi of NeoSmart Technologies. `tcpproxy` is open source and licensed under the terms of the MIT public license, made available to the general public without warranty in the hopes that it may prove both edifying and useful.
