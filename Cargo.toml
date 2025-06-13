@@ -12,6 +12,6 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
-futures = "0.3.30"
-getopts = "0.2.21"
-tokio = { version = "1.36.0", features = [ "io-util", "net", "rt-multi-thread", "macros", "sync" ] }
+futures = "0.3.31"
+getopts = "0.2.23"
+tokio = { version = "1.45.1", features = [ "io-util", "net", "rt-multi-thread", "macros", "sync" ] }
