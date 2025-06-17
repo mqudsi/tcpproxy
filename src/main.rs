@@ -39,6 +39,7 @@ async fn main() -> Result<(), BoxedError> {
         "LOCAL_PORT",
     );
     opts.optflag("d", "debug", "Enable debug mode");
+    opts.optflag("h", "help", "Print usage info and exit");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(opts) => opts,
@@ -48,6 +49,12 @@ async fn main() -> Result<(), BoxedError> {
             std::process::exit(-1);
         }
     };
+
+    if matches.opt_present("h") {
+        print_usage(&mut std::io::stdout().lock(), &program, opts);
+        std::process::exit(0);
+    }
+
     let remote = match matches.free.len() {
         1 => matches.free[0].clone(),
         _ => {
