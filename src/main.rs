@@ -10,14 +10,14 @@ type BoxedError = Box<dyn std::error::Error + Sync + Send + 'static>;
 static DEBUG: AtomicBool = AtomicBool::new(false);
 const BUF_SIZE: usize = 1024;
 
-fn print_usage(program: &str, opts: Options) {
+fn print_usage(out: &mut dyn std::io::Write, program: &str, opts: Options) {
     let program_path = std::path::PathBuf::from(program);
     let program_name = program_path.file_stem().unwrap().to_string_lossy();
     let brief = format!(
         "Usage: {} REMOTE_HOST:PORT [-b BIND_ADDR] [-l LOCAL_PORT]",
         program_name
     );
-    print!("{}", opts.usage(&brief));
+    _ = write!(out, "{}", opts.usage(&brief));
 }
 
 #[tokio::main]
@@ -44,14 +44,14 @@ async fn main() -> Result<(), BoxedError> {
         Ok(opts) => opts,
         Err(e) => {
             eprintln!("{}", e);
-            print_usage(&program, opts);
+            print_usage(&mut std::io::stderr().lock(), &program, opts);
             std::process::exit(-1);
         }
     };
     let remote = match matches.free.len() {
         1 => matches.free[0].clone(),
         _ => {
-            print_usage(&program, opts);
+            print_usage(&mut std::io::stderr().lock(), &program, opts);
             std::process::exit(-1);
         }
     };
