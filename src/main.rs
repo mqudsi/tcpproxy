@@ -40,6 +40,7 @@ async fn main() -> Result<(), BoxedError> {
     );
     opts.optflag("d", "debug", "Enable debug mode");
     opts.optflag("h", "help", "Print usage info and exit");
+    opts.optflag("V", "version", "Print version info and exit");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(opts) => opts,
@@ -52,6 +53,11 @@ async fn main() -> Result<(), BoxedError> {
 
     if matches.opt_present("h") {
         print_usage(&mut std::io::stdout().lock(), &program, opts);
+        std::process::exit(0);
+    }
+
+    if matches.opt_present("V") {
+        println!("tcpproxy {} - {}", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_REPOSITORY"));
         std::process::exit(0);
     }
 
