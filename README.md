@@ -15,11 +15,13 @@ tcpproxy REMOTE_HOST:PORT [-b BIND_ADDR] [-l LOCAL_PORT]
 Options:
     -b, --bind BIND_ADDR
                         The address on which to listen for incoming requests,
-                        defaulting to localhost.
+                        defaulting to localhost
     -l, --local-port LOCAL_PORT
-                        The local port to which tcpproxy should bind to
-                        listening for requests, randomly chosen otherwise.
-    -d, --debug         Enables debug mode w/ connection logging.
+                        The local port to which tcpproxy should bind to,
+                        randomly chosen otherwise
+    -d, --debug         Enable debug mode w/ connection logging
+    -h, --help          Print usage info and exit
+    -V, --version       Print version info and exit
 ```
 
 Where possible, sane defaults for arguments are provided automatically.
