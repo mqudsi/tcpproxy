@@ -38,7 +38,7 @@ async fn main() -> Result<(), BoxedError> {
         "The local port to which tcpproxy should bind to, randomly chosen otherwise",
         "LOCAL_PORT",
     );
-    opts.optflag("d", "debug", "Enable debug mode");
+    opts.optflag("d", "debug", "Enable debug mode w/ connection logging");
     opts.optflag("h", "help", "Print usage info and exit");
     opts.optflag("V", "version", "Print version info and exit");
 
