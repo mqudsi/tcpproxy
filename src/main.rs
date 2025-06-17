@@ -57,7 +57,11 @@ async fn main() -> Result<(), BoxedError> {
     }
 
     if matches.opt_present("V") {
-        println!("tcpproxy {} - {}", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_REPOSITORY"));
+        println!(
+            "tcpproxy {} - {}",
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_REPOSITORY")
+        );
         std::process::exit(0);
     }
 
