@@ -14,3 +14,5 @@ edition = "2018"
 futures = "0.3.34"
 getopts = "0.2.24"
 tokio = { version = "1.53.2", features = [ "io-util", "net", "rt-multi-thread", "macros", "sync" ] }
+# bytes is not used directly, but this updates the transitive dependency via tokio
+bytes = "1.11.1"
