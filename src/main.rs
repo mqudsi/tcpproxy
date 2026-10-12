@@ -12,7 +12,10 @@ const BUF_SIZE: usize = 1024;
 
 fn print_usage(out: &mut dyn std::io::Write, program: &str, opts: Options) {
     let program_path = std::path::PathBuf::from(program);
-    let program_name = program_path.file_stem().unwrap().to_string_lossy();
+    let program_name = program_path
+        .file_stem()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_else(|| "tcpproxy".into());
     let brief = format!(
         "Usage: {} REMOTE_HOST:PORT [-b BIND_ADDR] [-l LOCAL_PORT]",
         program_name
